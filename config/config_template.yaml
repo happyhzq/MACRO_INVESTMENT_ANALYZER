@@ -1,0 +1,175 @@
+# 宏观分析模块配置文件
+
+# 数据库配置
+database:
+  type: mysql
+  host: localhost
+  port: 3306
+  user: root
+  password: password
+  database_name: macro_investment
+  charset: utf8mb4
+
+# 数据源配置
+data_sources:
+  # RSS源配置
+  rss:
+    enabled: true
+    sources:
+      - name: Bloomberg
+        url: https://www.bloomberg.com/feed/podcast/etf-report
+        category: finance
+        update_interval: 3600  # 秒
+      - name: Reuters
+        url: https://www.reutersagency.com/feed/
+        category: finance
+        update_interval: 3600
+      - name: WSJ
+        url: https://feeds.a.dj.com/rss/RSSMarketsMain.xml
+        category: finance
+        update_interval: 3600
+      - name: FT
+        url: https://www.ft.com/rss/home
+        category: finance
+        update_interval: 3600
+  
+  # NewsAPI配置
+  newsapi:
+    enabled: true
+    api_key: your_api_key_here
+    sources:
+      - bloomberg
+      - reuters
+      - financial-times
+      - wall-street-journal
+    categories:
+      - business
+      - economy
+      - finance
+    update_interval: 7200  # 秒
+    max_articles_per_request: 100
+
+# 分析配置
+analysis:
+  # 关键词过滤配置
+  keyword_filter:
+    enabled: true
+    keywords:
+      trade_policy:
+        - 关税
+        - 贸易政策
+        - 贸易战
+        - 进口税
+        - 出口限制
+        - 贸易协定
+      monetary_policy:
+        - 利率
+        - 加息
+        - 降息
+        - 央行
+        - 货币政策
+        - 量化宽松
+        - QE
+        - 紧缩政策
+      fiscal_policy:
+        - 财政刺激
+        - 政府支出
+        - 减税
+        - 财政政策
+        - 基建投资
+      geopolitical:
+        - 地缘政治
+        - 战争
+        - 制裁
+        - 冲突
+        - 政治危机
+    
+  # 情绪分析配置
+  sentiment_analysis:
+    enabled: true
+    method: textblob  # 可选: textblob, vader, custom
+    language: zh  # 中文分析
+    
+  # 量化分析配置
+  quantitative_analysis:
+    enabled: true
+    historical_correlation_window: 90  # 天
+    impact_decay_factor: 0.95  # 事件影响衰减因子
+    confidence_threshold: 0.7  # 置信度阈值
+
+# 历史数据配置
+historical_data:
+  sources:
+    - name: yahoo_finance
+      enabled: true
+      data_types:
+        - stock_prices
+        - indices
+    - name: fred
+      enabled: true
+      data_types:
+        - gdp
+        - interest_rates
+        - unemployment
+        - cpi
+        - ppi
+    - name: world_bank
+      enabled: true
+      data_types:
+        - global_trade
+        - commodity_prices
+  local_cache_days: 30  # 本地缓存天数
+
+# 模型整合配置
+model_integration:
+  # DCF模型整合
+  dcf:
+    enabled: true
+    impact_factors:
+      - name: interest_rate
+        weight: 0.4
+        source: fred
+      - name: gdp_growth
+        weight: 0.3
+        source: fred
+      - name: inflation
+        weight: 0.2
+        source: fred
+      - name: sentiment
+        weight: 0.1
+        source: analysis
+    
+  # 商品供需预测整合
+  commodity:
+    enabled: true
+    impact_factors:
+      - name: trade_policy
+        weight: 0.35
+        source: keyword_filter
+      - name: global_supply
+        weight: 0.3
+        source: world_bank
+      - name: demand_forecast
+        weight: 0.25
+        source: fred
+      - name: sentiment
+        weight: 0.1
+        source: analysis
+
+# 归因分析配置
+attribution:
+  enabled: true
+  lookback_period: 90  # 天
+  factors:
+    - macro_events
+    - sector_performance
+    - company_specific
+    - market_sentiment
+  report_format: html  # 可选: html, pdf, csv
+
+# 日志配置
+logging:
+  level: INFO  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  file: logs/macro_analyzer.log
+  max_size_mb: 10
+  backup_count: 5
