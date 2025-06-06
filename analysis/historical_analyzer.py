@@ -520,4 +520,22 @@ class HistoricalAnalyzer:
             事件列表
         """
       
-(Content truncated due to size limit. Use line ranges to read in chunks)
+        connection = self.db_connector.get_connection()
+        try:
+            cursor = connection.cursor(dictionary=True)
+            query = """
+            SELECT * FROM macro_events
+            WHERE event_category = %s
+            ORDER BY start_date DESC
+            LIMIT 100
+            """
+            cursor.execute(query, (category,))
+            events = cursor.fetchall()
+            return events
+        except Error as e:
+            logger.error(f"获取历史事件时出错: {e}")
+            return []
+        finally:
+            if connection.is_connected():
+                cursor.close()
+                connection.close()

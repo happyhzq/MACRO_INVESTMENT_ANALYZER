@@ -134,6 +134,71 @@ class QuantitativeAnalyzer:
         
         return identified_events
     
+    def analyze_articles(self, article_ids: List[int]) -> Dict[str, Any]:
+        """
+        对一组文章进行量化分析
+        
+        Args:
+            article_ids: 文章ID列表
+            
+        Returns:
+            分析结果
+        """
+        if not self.enabled:
+            logger.info("量化分析已禁用，跳过文章分析")
+            return {}
+            
+        if not article_ids:
+            logger.warning("没有提供文章ID，无法进行分析")
+            return {}
+            
+        # 获取文章内容
+        articles = self._get_articles_by_ids(article_ids)
+        
+        if not articles:
+            logger.warning("未找到指定的文章，无法进行分析")
+            return {}
+            
+        # 获取文章的情绪分析结果
+        sentiment_results = self._get_sentiment_results(article_ids)
+        
+        # 获取文章的关键词匹配结果
+        keyword_results = self._get_keyword_results(article_ids)
+        
+        # 计算文章的主题分布
+        topic_distribution = self._calculate_topic_distribution(articles)
+        
+        # 计算文章的时间分布
+        time_distribution = self._calculate_time_distribution(articles)
+        
+        # 计算文章的来源分布
+        source_distribution = self._calculate_source_distribution(articles)
+        
+        # 构建分析结果
+        analysis_result = {
+            'article_count': len(articles),
+            'date_range': {
+                'start': min([a['published_date'] for a in articles]),
+                'end': max([a['published_date'] for a in articles])
+            },
+            'sentiment': {
+                'avg_polarity': np.mean([s['polarity'] for s in sentiment_results]) if sentiment_results else 0,
+                'avg_subjectivity': np.mean([s['subjectivity'] for s in sentiment_results]) if sentiment_results else 0,
+                'positive_count': sum(1 for s in sentiment_results if s['polarity'] > 0.2),
+                'negative_count': sum(1 for s in sentiment_results if s['polarity'] < -0.2),
+                'neutral_count': sum(1 for s in sentiment_results if -0.2 <= s['polarity'] <= 0.2)
+            },
+            'keywords': {
+                'top_keywords': self._get_top_keywords(keyword_results, 10),
+                'category_distribution': self._get_category_distribution(keyword_results)
+            },
+            'topics': topic_distribution,
+            'time_distribution': time_distribution,
+            'source_distribution': source_distribution
+        }
+        
+        return analysis_result
+    
     def _get_recent_keyword_matches(self, days: int) -> List[Dict[str, Any]]:
         """
         获取最近一段时间内的关键词匹配结果
@@ -168,6 +233,7 @@ class QuantitativeAnalyzer:
         finally:
             if connection.is_connected():
                 cursor.close()
+                connection.close()
     
     def _get_average_sentiment(self, article_ids: List[int]) -> Dict[str, float]:
         """
@@ -210,6 +276,7 @@ class QuantitativeAnalyzer:
         finally:
             if connection.is_connected():
                 cursor.close()
+                connection.close()
     
     def save_macro_event(self, event: Dict[str, Any]) -> Optional[int]:
         """
@@ -261,6 +328,7 @@ class QuantitativeAnalyzer:
         finally:
             if connection.is_connected():
                 cursor.close()
+                connection.close()
     
     def _save_event_articles(self, event_id: int, article_ids: List[int]) -> bool:
         """
@@ -300,6 +368,7 @@ class QuantitativeAnalyzer:
         finally:
             if connection.is_connected():
                 cursor.close()
+                connection.close()
     
     def analyze_event_impact(self, event_id: int) -> List[Dict[str, Any]]:
         """
@@ -389,6 +458,7 @@ class QuantitativeAnalyzer:
         finally:
             if connection.is_connected():
                 cursor.close()
+                connection.close()
     
     def _find_similar_events(self, event: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
@@ -432,6 +502,7 @@ class QuantitativeAnalyzer:
         finally:
             if connection.is_connected():
                 cursor.close()
+                connection.close()
     
     def _analyze_indicator_impact(self, event: Dict[str, Any], similar_events: List[Dict[str, Any]], 
                                  indicator: str) -> Optional[Dict[str, Any]]:
@@ -500,13 +571,9 @@ class QuantitativeAnalyzer:
         """
         # 计算目标日期
         target_date = date + datetime.timedelta(days=offset_days)
-        
         connection = self.db_connector.get_connection()
-        
         try:
             cursor = connection.cursor(dictionary=True)
-            
-            # 查询最接近目标日期的指标值
             query = """
             SELECT value
             FROM economic_indicators
@@ -515,6 +582,13 @@ class QuantitativeAnalyzer:
             ORDER BY ABS(DATEDIFF(date, %s))
             LIMIT 1
             """
-            
-            cursor.execute
-(Content truncated due to size limit. Use line ranges to read in chunks)
+            cursor.execute(query, (indicator, target_date, target_date))
+            row = cursor.fetchone()
+            return row['value'] if row and 'value' in row else None
+        except Error as e:
+            logger.error(f"获取指标值时出错: {e}")
+            return None
+        finally:
+            if connection.is_connected():
+                cursor.close()
+                connection.close()

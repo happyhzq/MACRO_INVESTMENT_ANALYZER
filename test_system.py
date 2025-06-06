@@ -52,6 +52,9 @@ class TestMacroInvestmentAnalyzer(unittest.TestCase):
         # 初始化数据库连接
         cls.db_connector = DatabaseConnector(cls.config['database'])
         
+        # 保存配置文件路径
+        cls.config_path = config_path
+        
         logger.info("测试环境准备完成")
     
     def test_database_connection(self):
@@ -66,10 +69,10 @@ class TestMacroInvestmentAnalyzer(unittest.TestCase):
     def test_rss_fetcher(self):
         """测试RSS数据抓取"""
         try:
-            rss_sources = self.config['data_sources']['rss']['sources']
-            rss_fetcher = RSSFetcher(rss_sources, self.db_connector)
+            rss_fetcher = RSSFetcher(self.config_path)
             
             # 测试单个源抓取
+            rss_sources = self.config['data_sources']['rss']['sources']
             if rss_sources:
                 test_source = rss_sources[0]
                 articles = rss_fetcher.fetch_from_source(test_source['url'], test_source['name'])
@@ -81,12 +84,7 @@ class TestMacroInvestmentAnalyzer(unittest.TestCase):
     def test_news_api_fetcher(self):
         """测试NewsAPI数据抓取"""
         try:
-            api_key = self.config['data_sources']['news_api']['api_key']
-            if not api_key or api_key == "your_api_key_here":
-                logger.warning("NewsAPI测试跳过: 未提供有效的API密钥")
-                return
-                
-            news_api_fetcher = NewsAPIFetcher(api_key, self.db_connector)
+            news_api_fetcher = NewsAPIFetcher(self.config_path)
             articles = news_api_fetcher.fetch_news(
                 keywords=self.config['data_sources']['news_api']['keywords'],
                 days=1  # 仅测试1天的数据
@@ -99,11 +97,11 @@ class TestMacroInvestmentAnalyzer(unittest.TestCase):
     def test_keyword_filter(self):
         """测试关键词过滤"""
         try:
-            keywords = self.config['analysis']['keyword_filter']['keywords']
-            keyword_filter = KeywordFilter(keywords, self.db_connector)
+            keyword_filter = KeywordFilter(self.config_path)
             
             # 创建测试文章
             test_article = {
+                'id': 999,  # 测试ID
                 'title': 'US Imposes New Tariffs on Chinese Goods',
                 'content': 'The United States announced new tariffs on Chinese imports, affecting various sectors including technology and manufacturing.',
                 'source': 'Test Source',
@@ -112,7 +110,7 @@ class TestMacroInvestmentAnalyzer(unittest.TestCase):
             }
             
             # 测试关键词匹配
-            matches = keyword_filter.find_keywords(test_article)
+            matches = keyword_filter.analyze_article(test_article['id'], test_article['title'], test_article['content'])
             self.assertIsInstance(matches, list)
             logger.info(f"关键词过滤测试通过，找到 {len(matches)} 个关键词匹配")
         except Exception as e:
@@ -121,7 +119,7 @@ class TestMacroInvestmentAnalyzer(unittest.TestCase):
     def test_sentiment_analyzer(self):
         """测试情绪分析"""
         try:
-            sentiment_analyzer = SentimentAnalyzer(self.db_connector)
+            sentiment_analyzer = SentimentAnalyzer(self.config_path)
             
             # 测试文本
             test_texts = [
@@ -143,8 +141,7 @@ class TestMacroInvestmentAnalyzer(unittest.TestCase):
     def test_historical_analyzer(self):
         """测试历史数据分析"""
         try:
-            config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config', 'config.yaml')
-            historical_analyzer = HistoricalAnalyzer(config_path)
+            historical_analyzer = HistoricalAnalyzer(self.config_path)
             
             # 测试历史数据获取
             start_date = datetime.date.today() - datetime.timedelta(days=30)
@@ -165,8 +162,7 @@ class TestMacroInvestmentAnalyzer(unittest.TestCase):
     def test_dcf_integrator(self):
         """测试DCF模型整合"""
         try:
-            config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config', 'config.yaml')
-            dcf_integrator = DCFIntegrator(config_path)
+            dcf_integrator = DCFIntegrator(self.config_path)
             
             # 测试股票
             test_stock = 'AAPL'
@@ -186,8 +182,7 @@ class TestMacroInvestmentAnalyzer(unittest.TestCase):
     def test_commodity_integrator(self):
         """测试商品供需预测整合"""
         try:
-            config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config', 'config.yaml')
-            commodity_integrator = CommodityIntegrator(config_path)
+            commodity_integrator = CommodityIntegrator(self.config_path)
             
             # 测试商品
             test_commodity = 'oil'
@@ -207,8 +202,7 @@ class TestMacroInvestmentAnalyzer(unittest.TestCase):
     def test_attribution_model(self):
         """测试投资归因分析"""
         try:
-            config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config', 'config.yaml')
-            attribution_model = AttributionModel(config_path)
+            attribution_model = AttributionModel(self.config_path)
             
             # 测试决策ID
             test_decision_id = 1

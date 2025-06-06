@@ -126,6 +126,86 @@ class CommodityIntegrator:
         
         return adjusted_params
     
+    def predict_commodity_price(self, commodity_name: str, event_ids: List[int] = None) -> Dict[str, Any]:
+        """
+        预测商品价格
+        
+        Args:
+            commodity_name: 商品名称
+            event_ids: 要考虑的宏观事件ID列表，如果为None则考虑所有最近事件
+            
+        Returns:
+            价格预测结果
+        """
+        # 调整商品供需参数
+        adjusted_params = self.adjust_commodity_parameters(commodity_name, event_ids)
+        
+        if not adjusted_params:
+            logger.warning(f"无法获取商品 {commodity_name} 的调整参数，无法预测价格")
+            return {}
+        
+        # 获取当前价格
+        current_price = self._get_current_commodity_price(commodity_name)
+        
+        if current_price <= 0:
+            logger.warning(f"无法获取商品 {commodity_name} 的当前价格，无法预测价格")
+            return {}
+        
+        # 计算供需平衡
+        supply = adjusted_params.get('supply', 0)
+        demand = adjusted_params.get('demand', 0)
+        inventory = adjusted_params.get('inventory', 0)
+        
+        if supply <= 0 or demand <= 0:
+            logger.warning(f"商品 {commodity_name} 的供应量或需求量无效，无法预测价格")
+            return {}
+        
+        # 计算供需比
+        supply_demand_ratio = supply / demand
+        
+        # 计算库存覆盖天数
+        inventory_days = inventory / (demand / 365) if demand > 0 else 0
+        
+        # 计算价格弹性
+        price_elasticity = adjusted_params.get('price_elasticity', -0.5)
+        
+        # 计算季节性因子
+        seasonal_factor = adjusted_params.get('seasonal_factor', 1.0)
+        
+        # 计算预测价格变化率
+        # 供需比<1表示供不应求，价格上涨；供需比>1表示供过于求，价格下跌
+        price_change_pct = ((1 / supply_demand_ratio) - 1) * (-1 / price_elasticity) * seasonal_factor
+        
+        # 考虑库存因素
+        # 库存天数越多，价格变化越小
+        inventory_factor = max(0.5, min(1.5, 30 / inventory_days)) if inventory_days > 0 else 1.5
+        price_change_pct *= inventory_factor
+        
+        # 限制价格变化在合理范围内
+        price_change_pct = max(min(price_change_pct, 0.5), -0.3)  # 最大涨50%，最大跌30%
+        
+        # 计算预测价格
+        predicted_price = current_price * (1 + price_change_pct)
+        
+        # 构建预测结果
+        prediction = {
+            'commodity_name': commodity_name,
+            'current_price': current_price,
+            'predicted_price': predicted_price,
+            'price_change_pct': price_change_pct * 100,  # 转换为百分比
+            'supply': supply,
+            'demand': demand,
+            'supply_demand_ratio': supply_demand_ratio,
+            'inventory_days': inventory_days,
+            'prediction_date': datetime.datetime.now().strftime('%Y-%m-%d'),
+            'confidence': self._calculate_prediction_confidence(adjusted_params, event_ids)
+        }
+        
+        # 保存预测结果
+        self._save_price_prediction(prediction)
+        
+        return prediction
+    
     def _get_original_commodity_parameters(self, commodity_name: str) -> Dict[str, float]:
         """
         获取商品的原始供需参数
@@ -168,6 +248,28 @@ class CommodityIntegrator:
             default_params['price_elasticity'] = -0.4
         
         return default_params
+    
+    def _get_current_commodity_price(self, commodity_name: str) -> float:
+        """
+        获取商品的当前价格
+        
+        Args:
+            commodity_name: 商品名称
+            
+        Returns:
+            当前价格
+        """
+        # 在实际应用中，应该从市场数据API获取最新价格
+        # 这里我们使用一些默认值作为示例
+        
+        if commodity_name == 'oil':
+            return 75.0  # 美元/桶
+        elif commodity_name == 'gold':
+            return 1800.0  # 美元/盎司
+        elif commodity_name == 'copper':
+            return 9000.0  # 美元/吨
+        else:
+            return 100.0  # 默认价格
     
     def _get_recent_events(self, days: int) -> List[Dict[str, Any]]:
         """
@@ -510,5 +612,152 @@ class CommodityIntegrator:
             logger.error(f"获取事件关键词时出错: {e}")
             return []
         finally:
-            if connection.
-(Content truncated due to size limit. Use line ranges to read in chunks)
+            if connection.is_connected():
+                cursor.close()
+                connection.close()
+
+    def _get_commodity_keywords(self, commodity_name: str) -> List[str]:
+        """
+        获取与商品相关的关键词
+        """
+        mapping = {
+            'oil': ['oil', 'crude', 'petroleum', 'OPEC', 'refinery', 'energy'],
+            'gold': ['gold', 'bullion', 'precious metal', 'safe haven'],
+            'copper': ['copper', 'metal', 'industrial metal', 'mining'],
+            'wheat': ['wheat', 'grain', 'agriculture', 'food'],
+            'corn': ['corn', 'maize', 'grain', 'feed']
+        }
+        return mapping.get(commodity_name, [commodity_name])
+
+    def _get_commodity_trade_sensitivity(self, commodity_name: str) -> float:
+        """
+        获取商品对全球贸易变化的敏感度
+        """
+        sensitivities = {
+            'oil': 1.2,
+            'copper': 1.0,
+            'gold': 0.4,
+            'wheat': 0.7,
+            'corn': 0.7
+        }
+        return sensitivities.get(commodity_name, 0.5)
+
+    def _get_event_sentiment(self, event_id: int) -> Optional[Dict[str, float]]:
+        """
+        获取事件的情绪分析结果
+        """
+        connection = self.db_connector.get_connection()
+        try:
+            cursor = connection.cursor(dictionary=True)
+            # 获取与事件相关的文章
+            query = """
+            SELECT article_id
+            FROM event_articles
+            WHERE event_id = %s
+            """
+            cursor.execute(query, (event_id,))
+            article_rows = cursor.fetchall()
+            if not article_rows:
+                return None
+            article_ids = [row['article_id'] for row in article_rows]
+            if not article_ids:
+                return None
+            # 获取这些文章的情绪分析结果
+            placeholders = ', '.join(['%s'] * len(article_ids))
+            query = f"""
+            SELECT AVG(polarity) as avg_polarity, AVG(subjectivity) as avg_subjectivity
+            FROM sentiment_analysis
+            WHERE article_id IN ({placeholders})
+            """
+            cursor.execute(query, article_ids)
+            result = cursor.fetchone()
+            if result and result['avg_polarity'] is not None:
+                return result
+            else:
+                return None
+        except Error as e:
+            logger.error(f"获取事件情绪分析结果时出错: {e}")
+            return None
+        finally:
+            if connection.is_connected():
+                cursor.close()
+                connection.close()
+
+    def _save_commodity_adjustments(self, commodity_name: str, adjustments: Dict[str, Dict[str, Any]], events: List[Dict[str, Any]]) -> bool:
+        """
+        保存商品参数调整记录
+        """
+        if not adjustments:
+            return True
+        connection = self.db_connector.get_connection()
+        try:
+            cursor = connection.cursor()
+            adjustment_date = datetime.date.today()
+            for factor_name, adjustment in adjustments.items():
+                max_event_id = None
+                if events:
+                    max_event_id = events[0].get('id')
+                insert_query = """
+                INSERT INTO commodity_adjustments
+                (commodity_name, adjustment_date, factor_name, original_value, adjusted_value, adjustment_reason, confidence, event_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """
+                reason = f"Adjusted based on {len(events)} macro events"
+                confidence = min(0.5 + len(events) / 20, 0.95)
+                cursor.execute(insert_query, (
+                    commodity_name,
+                    adjustment_date,
+                    factor_name,
+                    adjustment['original_value'],
+                    adjustment['adjusted_value'],
+                    reason,
+                    confidence,
+                    max_event_id
+                ))
+            connection.commit()
+            logger.info(f"成功保存商品 {commodity_name} 的参数调整记录")
+            return True
+        except Error as e:
+            logger.error(f"保存商品参数调整记录时出错: {e}")
+            connection.rollback()
+            return False
+        finally:
+            if connection.is_connected():
+                cursor.close()
+                connection.close()
+
+    def forecast(self, commodity_name: str, event_ids: List[int] = None) -> Dict[str, Any]:
+        """
+        结合宏观事件进行商品供需预测（示例）
+        """
+        adjusted_params = self.adjust_commodity_parameters(commodity_name, event_ids)
+        if not adjusted_params:
+            logger.warning(f"无法获取商品 {commodity_name} 的调整后参数，预测失败")
+            return {}
+        try:
+            # 简单的供需平衡模型：价格变动幅度与供需缺口成正比
+            supply = adjusted_params.get('supply', 0)
+            demand = adjusted_params.get('demand', 0)
+            inventory = adjusted_params.get('inventory', 0)
+            price_elasticity = adjusted_params.get('price_elasticity', -0.5)
+            seasonal_factor = adjusted_params.get('seasonal_factor', 1.0)
+
+            gap = (demand - supply) / (supply + 1e-6)
+            price_change = gap * price_elasticity * seasonal_factor
+            result = {
+                'commodity': commodity_name,
+                'adjusted_params': adjusted_params,
+                'predicted_price_change_pct': round(price_change * 100, 4),
+                'inventory': inventory
+            }
+            logger.info(f"商品 {commodity_name} 供需预测结果: {json.dumps(result)}")
+            return result
+        except Exception as e:
+            logger.error(f"商品供需预测计算出错: {e}")
+            return {}
+
+# 可选：为单元测试/演示提供main入口
+if __name__ == "__main__":
+    integrator = CommodityIntegrator('config.yaml')
+    result = integrator.forecast('oil')
+    print(result)

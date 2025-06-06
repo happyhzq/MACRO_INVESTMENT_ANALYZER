@@ -42,32 +42,48 @@ def load_config(config_path):
 
 def initialize_database(config):
     """初始化数据库"""
+    import mysql.connector
     try:
-        db_connector = DatabaseConnector(config['database'])
-        connection = db_connector.get_connection()
+        # 检查配置
+        if 'database' not in config or not isinstance(config['database'], dict):
+            logger.error("配置文件缺少 database 字段或格式不正确")
+            sys.exit(1)
+        db_params = config['database'].copy()
+        if 'database_name' not in db_params:
+            logger.error("database_name 子字段缺失")
+            sys.exit(1)
+        db_name = db_params.pop('database_name')
         
-        # 检查连接
+        # 移除 type 字段（如果有）
+        db_params.pop('type', None)
+        
+        # 1. 先连到MySQL默认库
+        connection = mysql.connector.connect(**db_params)
+        cursor = connection.cursor()
+        cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}` DEFAULT CHARACTER SET utf8mb4")
+        connection.commit()
+        cursor.close()
+        connection.close()
+
+        # 2. 再用原来的 DatabaseConnector 逻辑连到目标库
+        db_params['database_name'] = db_name
+        db_connector = DatabaseConnector(db_params)
+        connection = db_connector.get_connection()
+
         if connection.is_connected():
             logger.info("数据库连接成功")
-            
-            # 初始化数据库结构
             schema_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'database', 'schema.sql')
             if os.path.exists(schema_file):
                 with open(schema_file, 'r', encoding='utf-8') as f:
                     schema_sql = f.read()
-                
                 cursor = connection.cursor()
-                
-                # 分割SQL语句并执行
                 for statement in schema_sql.split(';'):
                     if statement.strip():
                         cursor.execute(statement)
-                
                 connection.commit()
                 logger.info("数据库结构初始化完成")
             else:
                 logger.warning(f"数据库结构文件不存在: {schema_file}")
-        
         return db_connector
     except Exception as e:
         logger.error(f"初始化数据库失败: {e}")
@@ -251,7 +267,17 @@ if __name__ == "__main__":
     parser.add_argument("--analyze-only", action="store_true", help="仅分析数据")
     parser.add_argument("--integrate-only", action="store_true", help="仅整合模型")
     parser.add_argument("--attribution-only", action="store_true", help="仅执行归因分析")
-    
+    parser.add_argument("--init-db", action="store_true", help="初始化数据库结构")  # 新增参数
+
     args = parser.parse_args()
-    
+
+    if args.init_db:
+        # 只做数据库初始化，不执行主流程
+        setup_logger(log_level=args.log_level)
+        logger.info("执行数据库结构初始化")
+        config = load_config(args.config)
+        initialize_database(config)
+        logger.info("数据库结构初始化流程完成")
+        sys.exit(0)
+
     main(args)

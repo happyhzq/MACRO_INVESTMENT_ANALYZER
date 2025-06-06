@@ -540,5 +540,31 @@ class DCFIntegrator:
             terminal_growth_rate = adjusted_params.get('terminal_growth_rate', 0.02)
             
             # 提取财务数据
-  
-(Content truncated due to size limit. Use line ranges to read in chunks)
+            fcf = financials['fcf']
+            shares = financials['shares_outstanding']
+            projection_years = 5
+
+            # 未来现金流折现
+            cashflows = []
+            for t in range(1, projection_years + 1):
+                fcf_t = fcf * ((1 + growth_rate) ** t)
+                discounted = fcf_t / ((1 + discount_rate) ** t)
+                cashflows.append(discounted)
+            terminal_value = (fcf * ((1 + growth_rate) ** projection_years) * (1 + terminal_growth_rate)) / (discount_rate - terminal_growth_rate)
+            terminal_value_discounted = terminal_value / ((1 + discount_rate) ** projection_years)
+            dcf_value = sum(cashflows) + terminal_value_discounted
+            per_share_value = dcf_value / shares if shares > 0 else 0
+
+            result = {
+                'stock_symbol': stock_symbol,
+                'dcf_value': dcf_value,
+                'per_share_value': per_share_value,
+                'adjusted_params': adjusted_params,
+                'inputs': financials,
+                'projection_years': projection_years
+            }
+            logger.info(f"完成DCF估值: {json.dumps(result)}")
+            return result
+        except Exception as e:
+            logger.error(f"DCF估值计算出错: {e}")
+            return {}

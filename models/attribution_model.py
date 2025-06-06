@@ -136,6 +136,51 @@ class AttributionModel:
         
         return result
     
+    def generate_attribution_report(self, decision_id: int, output_dir: str = None) -> str:
+        """
+        生成投资归因分析报告
+        
+        Args:
+            decision_id: 投资决策ID
+            output_dir: 输出目录，如果为None则使用默认目录
+            
+        Returns:
+            报告文件路径
+        """
+        if not self.enabled:
+            logger.info("投资归因分析已禁用，跳过报告生成")
+            return ""
+        
+        # 分析投资决策
+        result = self.analyze_investment_decision(decision_id)
+        
+        if not result:
+            logger.warning(f"无法分析投资决策ID {decision_id}，跳过报告生成")
+            return ""
+        
+        # 确定输出目录
+        if output_dir is None:
+            output_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'reports')
+        
+        # 确保输出目录存在
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # 生成报告
+        report_format = self.report_format.lower()
+        
+        if report_format == 'html':
+            report_path = self._generate_html_report(result, output_dir)
+        elif report_format == 'pdf':
+            report_path = self._generate_pdf_report(result, output_dir)
+        elif report_format == 'markdown':
+            report_path = self._generate_markdown_report(result, output_dir)
+        else:
+            report_path = self._generate_text_report(result, output_dir)
+        
+        logger.info(f"成功生成投资归因分析报告: {report_path}")
+        
+        return report_path
+    
     def _get_investment_decision(self, decision_id: int) -> Optional[Dict[str, Any]]:
         """
         获取投资决策信息
@@ -494,5 +539,17 @@ class AttributionModel:
         # 这里我们返回一些示例数据
         
         # 计算持有天数
-        days = (dateti
-(Content truncated due to size limit. Use line ranges to read in chunks)
+        days = (datetime.datetime.now() - start_date).days
+        sentiment_map = {
+            'stock': {'impact': 0.8},
+            'commodity': {'impact': 0.6},
+        }
+        return sentiment_map.get(asset_type, {'impact': 0.5})
+
+    def _save_attribution_result(self, result: Dict[str, Any]) -> bool:
+        """
+        保存归因分析结果
+        """
+        # 实际业务应写入数据库，这里仅模拟输出日志
+        logger.info(f"保存归因分析结果: {json.dumps(result)}")
+        return True
